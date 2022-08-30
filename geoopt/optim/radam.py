@@ -85,6 +85,7 @@ class RiemannianAdam(OptimMixin, torch.optim.Adam):
                     # make local variables for easy access
                     exp_avg = state["exp_avg"]
                     exp_avg_sq = state["exp_avg_sq"]
+
                     # actual step
                     grad.add_(point, alpha=weight_decay)
                     grad = manifold.egrad2rgrad(point, grad)
@@ -95,13 +96,32 @@ class RiemannianAdam(OptimMixin, torch.optim.Adam):
                     bias_correction1 = 1 - betas[0] ** group["step"]
                     bias_correction2 = 1 - betas[1] ** group["step"]
                     if amsgrad:
+                      if exp_avg_sq.shape[-1] == 2:
+                        max_exp_avg_sq = state["max_exp_avg_sq"]
+                        max_exp_avg_sq = torch.view_as_complex(max_exp_avg_sq)
+                        exp_avg_sq = torch.view_as_complex(exp_avg_sq)
+                        # Maintains the maximum of all 2nd moment running avg. till now
+                        mask = max_exp_avg_sq.abs() > exp_avg_sq.abs()
+                        max_exp_avg_sq = max_exp_avg_sq * mask + exp_avg_sq * (~mask)
+                        state["max_exp_avg_sq"] = torch.view_as_real(max_exp_avg_sq) 
+                        # Use the max. for normalizing running avg. of gradient
+                        denom = max_exp_avg_sq.div(bias_correction2).sqrt_()
+                        denom = torch.view_as_real(denom)
+                      else:
                         max_exp_avg_sq = state["max_exp_avg_sq"]
                         # Maintains the maximum of all 2nd moment running avg. till now
                         torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
                         # Use the max. for normalizing running avg. of gradient
                         denom = max_exp_avg_sq.div(bias_correction2).sqrt_()
                     else:
-                        denom = exp_avg_sq.div(bias_correction2).sqrt_()
+                        if exp_avg_sq.shape[-1] == 2:
+                          exp_avg_sq_div = exp_avg_sq.div(bias_correction2)
+                          exp_avg_sq_div = torch.view_as_complex(exp_avg_sq_div)
+                          denom = exp_avg_sq_div.sqrt_()
+                          denom = torch.view_as_real(denom)
+                        else:
+                          denom = exp_avg_sq.div(bias_correction2).sqrt_()
+
                     # copy the state, we need it for retraction
                     # get the direction for ascend
                     direction = exp_avg.div(bias_correction1) / denom.add_(eps)

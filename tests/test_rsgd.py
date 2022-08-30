@@ -52,6 +52,44 @@ def test_rsgd_stiefel(params):
         dict(momentum=0.9, dampening=0.1, lr=1e-3),
     ],
 )
+def test_rsgd_complex_stiefel(params):
+    stiefel = geoopt.manifolds.ComplexStiefel()
+    torch.manual_seed(42)
+    with torch.no_grad():
+        X = geoopt.ManifoldParameter(torch.randn(20, 10, 2), manifold=stiefel).proj_()
+    Xstar = torch.randn(20, 10, 2)
+    Xstar.set_(stiefel.projx(Xstar))
+
+    def closure():
+        optim.zero_grad()
+        loss = (X - Xstar).abs().pow(2).sum()
+        # manifold constraint that makes optimization hard if violated
+        XtX = torch.view_as_complex(X).conj().t() @ torch.view_as_complex(X)
+        loss += (XtX - torch.eye(torch.view_as_complex(X).shape[1])).abs().pow(2).sum() * 100
+        loss.backward()
+        return loss.item()
+
+    optim = geoopt.optim.RiemannianSGD([X], **params)
+    assert (X - Xstar).norm() > 1e-5
+    for _ in range(10000):
+        if (X - Xstar).norm() < 1e-5:
+            break
+        optim.step(closure)
+    assert X.is_contiguous()
+    np.testing.assert_allclose(X.data, Xstar, atol=1e-5)
+    optim.load_state_dict(optim.state_dict())
+    optim.step(closure)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        dict(lr=1e-2),
+        dict(lr=1e-3, momentum=0.9),
+        dict(momentum=0.9, nesterov=True, lr=1e-3),
+        dict(momentum=0.9, dampening=0.1, lr=1e-3),
+    ],
+)
 def test_rsgd_spd(params):
     manifold = geoopt.manifolds.SymmetricPositiveDefinite()
     torch.manual_seed(42)

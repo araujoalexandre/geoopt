@@ -6,6 +6,10 @@ from .stiefel import (
     CanonicalStiefel,
     EuclideanStiefelExact,
 )
+from .complex_stiefel import (
+    ComplexStiefel,
+    ComplexCanonicalStiefel
+)
 from .sphere import Sphere, SphereExact
 from .birkhoff_polytope import BirkhoffPolytope
 from .symmetric_positive_definite import SymmetricPositiveDefinite
